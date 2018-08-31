@@ -1,0 +1,6 @@
+model_checkpoint_path: "/home/yskim/tensorflow_practice/neuralCollaborativeFiltering/runs/1535711508/checkpoints/model-800"
+all_model_checkpoint_paths: "/home/yskim/tensorflow_practice/neuralCollaborativeFiltering/runs/1535711508/checkpoints/model-400"
+all_model_checkpoint_paths: "/home/yskim/tensorflow_practice/neuralCollaborativeFiltering/runs/1535711508/checkpoints/model-500"
+all_model_checkpoint_paths: "/home/yskim/tensorflow_practice/neuralCollaborativeFiltering/runs/1535711508/checkpoints/model-600"
+all_model_checkpoint_paths: "/home/yskim/tensorflow_practice/neuralCollaborativeFiltering/runs/1535711508/checkpoints/model-700"
+all_model_checkpoint_paths: "/home/yskim/tensorflow_practice/neuralCollaborativeFiltering/runs/1535711508/checkpoints/model-800"

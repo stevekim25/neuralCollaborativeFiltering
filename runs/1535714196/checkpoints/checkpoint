@@ -1,0 +1,2 @@
+model_checkpoint_path: "/home/yskim/tensorflow_practice/neuralCollaborativeFiltering/runs/1535714196/checkpoints/model-19418"
+all_model_checkpoint_paths: "/home/yskim/tensorflow_practice/neuralCollaborativeFiltering/runs/1535714196/checkpoints/model-19418"
