@@ -112,8 +112,8 @@ class NeuMF:
             l2_loss += tf.nn.l2_loss(W)
             l2_loss += tf.nn.l2_loss(b)
             #self.logits = tf.nn.xw_plus_b(predict_vector, W, b, name='logits')
-            self.logits = tf.sigmoid(tf.nn.xw_plus_b(predict_vector, W, b, name='logits'))
-            self.predictions = tf.argmax(self.logits, axis=1, name='predictions')
+            self.logits = tf.nn.xw_plus_b(predict_vector, W, b, name='logits')
+            #self.predictions = tf.argmax(self.logits, axis=1, name='predictions')
 
         # Calculate mean cross-entropy loss
         with tf.name_scope("loss"):
@@ -121,8 +121,9 @@ class NeuMF:
             self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
 
         with tf.name_scope("accuracy"):
-            correct_predictions = tf.equal(self.predictions, self.labels)
-            self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, tf.float32), name='accuracy')
+            self.accuracy = tf.reduce_mean(tf.square(self.logits - self.labels))
+            #correct_predictions = tf.equal(self.predictions, self.labels)
+            #self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, tf.float32), name='accuracy')
 
 def get_train_instances(train, num_negatives):
     user_input, item_input, labels = [], [], []
@@ -222,6 +223,7 @@ if __name__=='__main__':
             for epoch in range(num_epochs):
                 batches = batch_iter_per_epoch(
                     list(zip(user_input, item_input, labels)), batch_size)
+                losses = 0.0
                 for batch in batches:
                     user_batch, item_batch, label_batch = zip(*batch)
                     user_batch = np.array(user_batch)
@@ -236,15 +238,16 @@ if __name__=='__main__':
                         neuMF.item_input: item_batch,
                         neuMF.labels: label_batch
                     }
-                    _, step, summaries, predictions, loss, accuracy = sess.run(
-                        [train_op, global_step, train_summary_op, neuMF.predictions, neuMF.loss, neuMF.accuracy], feed_dict)
+                    _, step, summaries, loss, accuracy = sess.run(
+                        [train_op, global_step, train_summary_op, neuMF.loss, neuMF.accuracy], feed_dict)
                     train_summary_writer.add_summary(summaries, step)
                     #print(predictions)
+                    losses += loss
 
                     # Training log display
                 if epoch % args.display_every == 0:
                     time_str = datetime.datetime.now().isoformat()
-                    print("{}: step {}, loss {:g}, acc {:g}".format(time_str, epoch, loss, accuracy))
+                    print("{}: step {}, loss {:g}, acc {:g}".format(time_str, epoch, losses, accuracy))
 
                 if epoch % args.checkpoint_every == 0:
                     path = saver.save(sess, checkpoint_prefix, global_step=step)
