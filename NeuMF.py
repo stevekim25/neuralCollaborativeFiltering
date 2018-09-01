@@ -50,7 +50,7 @@ def parse_args():
     parser.add_argument('--log_device_placement', type=bool, default=False,
                         help='Log placement of ops on devices')
 
-    parser.add_argument("--display_every", type=int, default=1, help="Number of iterations to display training info.")
+    parser.add_argument("--display_every", type=int, default=100, help="Number of iterations to display training info.")
     #parser.add_argument("--evaluate_every", type=int, default=100, help="Evaluate model on dev set after this many steps (default: 100)")
     parser.add_argument("--checkpoint_every", type=int, default=1, help="Save model after this many steps (default: 100)")
     parser.add_argument("--num_checkpoints", type=int, default=5, help="Number of checkpoints to store (default: 5)")
@@ -74,17 +74,17 @@ class NeuMF:
 
         # Embedding layer
         with tf.device('/gpu:0'), tf.name_scope('mlp_user_embedding'):
-            self.W_user = tf.Variable(tf.random_uniform([num_users, int(layers[0]/2)], -1.0, 1.0), name='W_mlp_user')
-            MLP_Embedding_User = tf.nn.embedding_lookup(self.W_user, self.user_input)
+            self.W_mlp_user = tf.Variable(tf.random_uniform([num_users, int(layers[0]/2)], -1.0, 1.0), name='W_mlp_user')
+            MLP_Embedding_User = tf.nn.embedding_lookup(self.W_mlp_user, self.user_input)
         with tf.device('/gpu:0'), tf.name_scope('mlp_item_embedding'):
-            self.W_item = tf.Variable(tf.random_uniform([num_items, int(layers[0]/2)], -1.0, 1.0), name='W_mlp_item')
-            MLP_Embedding_Item = tf.nn.embedding_lookup(self.W_item, self.item_input)
+            self.W_mlp_item = tf.Variable(tf.random_uniform([num_items, int(layers[0]/2)], -1.0, 1.0), name='W_mlp_item')
+            MLP_Embedding_Item = tf.nn.embedding_lookup(self.W_mlp_item, self.item_input)
         with tf.device('/gpu:0'), tf.name_scope('user_embedding'):
-            self.W_user = tf.Variable(tf.random_uniform([num_users, mf_dim],-1.0,1.0), name='W_mf_user')
-            MF_Embedding_User = tf.nn.embedding_lookup(self.W_user, self.user_input)
+            self.W_mf_user = tf.Variable(tf.random_uniform([num_users, mf_dim],-1.0,1.0), name='W_mf_user')
+            MF_Embedding_User = tf.nn.embedding_lookup(self.W_mf_user, self.user_input)
         with tf.device('/gpu:0'), tf.name_scope('item_embedding'):
-            self.W_item = tf.Variable(tf.random_uniform([num_items, mf_dim],-1.0,1.0), name='W_mf_item')
-            MF_Embedding_Item = tf.nn.embedding_lookup(self.W_item, self.item_input)
+            self.W_mf_item = tf.Variable(tf.random_uniform([num_items, mf_dim],-1.0,1.0), name='W_mf_item')
+            MF_Embedding_Item = tf.nn.embedding_lookup(self.W_mf_item, self.item_input)
 
         # MF part
         self.mf_user_latent = tf.layers.Flatten()(MF_Embedding_User)
@@ -245,9 +245,9 @@ if __name__=='__main__':
                     losses += loss
 
                     # Training log display
-                if epoch % args.display_every == 0:
-                    time_str = datetime.datetime.now().isoformat()
-                    print("{}: step {}, loss {:g}, acc {:g}".format(time_str, epoch, losses, accuracy))
+                    if epoch % args.display_every == 0:
+                        time_str = datetime.datetime.now().isoformat()
+                        print("{}: step {}, loss {:g}, acc {:g}".format(time_str, epoch, losses, accuracy))
 
                 if epoch % args.checkpoint_every == 0:
                     path = saver.save(sess, checkpoint_prefix, global_step=step)
