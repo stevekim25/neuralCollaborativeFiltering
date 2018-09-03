@@ -7,7 +7,7 @@ from time import time
 import datetime
 import sys
 import os
-import GMF, MLP
+#import GMF, MLP
 from batchGen import batch_iter_per_epoch
 import argparse
 
@@ -19,7 +19,7 @@ def parse_args():
                         help='Choose a dataset.')
     parser.add_argument('--epochs', type=int, default=100,
                         help='Number of epochs.')
-    parser.add_argument('--batch_size', type=int, default=5000,
+    parser.add_argument('--batch_size', type=int, default=1024,
                         help='Batch size.')
     parser.add_argument('--num_factors', type=int, default=8,
                         help='Embedding size of MF model.')
@@ -33,7 +33,7 @@ def parse_args():
                         help='Number of negative instances to pair with a positive instance.')
     parser.add_argument('--l2_reg_lambda', type=float, default=.0,
                         help='L2 regularization lambda (default: 0.0)')
-    parser.add_argument('--lr', type=float, default=0.0001,
+    parser.add_argument('--lr', type=float, default=0.0005,
                         help='Learning rate.')
     parser.add_argument('--learner', nargs='?', default='adam',
                         help='Specify an optimizer: adagrad, adam, rmsprop, sgd')
@@ -50,7 +50,7 @@ def parse_args():
     parser.add_argument('--log_device_placement', type=bool, default=False,
                         help='Log placement of ops on devices')
 
-    parser.add_argument("--display_every", type=int, default=1, help="Number of iterations to display training info.")
+    parser.add_argument("--display_every", type=int, default=200, help="Number of iterations to display training info.")
     #parser.add_argument("--evaluate_every", type=int, default=100, help="Evaluate model on dev set after this many steps (default: 100)")
     parser.add_argument("--checkpoint_every", type=int, default=1, help="Save model after this many steps (default: 100)")
     parser.add_argument("--num_checkpoints", type=int, default=5, help="Number of checkpoints to store (default: 5)")
@@ -66,24 +66,25 @@ class NeuMF:
         assert len(layers) == len(reg_layers)
         num_layer = len(layers)
 
-        l2_loss = tf.constant(0.0)
+        l2_loss = 0.0 #tf.constant(0.0)
         # Input variables
         self.user_input = tf.placeholder(tf.int32, shape=[None,1], name='user_input') # check shape
         self.item_input = tf.placeholder(tf.int32, shape=[None,1], name='item_input') # check shape
         self.labels = tf.placeholder(tf.float32, shape=[None,1], name='labels') # check shape
 
         # Embedding layer
-        with tf.device('/gpu:0'), tf.name_scope('mlp_user_embedding'):
-            self.W_mlp_user = tf.Variable(tf.random_uniform([num_users, int(layers[0]/2)], -0.25, 0.25), name='W_mlp_user')
+        #with tf.device('/gpu:0'):
+        with tf.name_scope('mlp_user_embedding'):
+            self.W_mlp_user = tf.Variable(tf.random_normal([num_users, int(layers[0]/2)],stddev=0.01), name='W_mlp_user')
             MLP_Embedding_User = tf.nn.embedding_lookup(self.W_mlp_user, self.user_input)
-        with tf.device('/gpu:0'), tf.name_scope('mlp_item_embedding'):
-            self.W_mlp_item = tf.Variable(tf.random_uniform([num_items, int(layers[0]/2)], -0.25, 0.25), name='W_mlp_item')
+        with tf.name_scope('mlp_item_embedding'):
+            self.W_mlp_item = tf.Variable(tf.random_normal([num_items, int(layers[0]/2)],stddev=0.01), name='W_mlp_item')
             MLP_Embedding_Item = tf.nn.embedding_lookup(self.W_mlp_item, self.item_input)
-        with tf.device('/gpu:0'), tf.name_scope('user_embedding'):
-            self.W_mf_user = tf.Variable(tf.random_uniform([num_users, mf_dim],-0.25,0.25), name='W_mf_user')
+        with tf.name_scope('user_embedding'):
+            self.W_mf_user = tf.Variable(tf.random_normal([num_users, mf_dim],stddev=0.01), name='W_mf_user')
             MF_Embedding_User = tf.nn.embedding_lookup(self.W_mf_user, self.user_input)
-        with tf.device('/gpu:0'), tf.name_scope('item_embedding'):
-            self.W_mf_item = tf.Variable(tf.random_uniform([num_items, mf_dim],-0.25,0.25), name='W_mf_item')
+        with tf.name_scope('item_embedding'):
+            self.W_mf_item = tf.Variable(tf.random_normal([num_items, mf_dim],stddev=0.01), name='W_mf_item')
             MF_Embedding_Item = tf.nn.embedding_lookup(self.W_mf_item, self.item_input)
 
         # MF part
@@ -94,25 +95,32 @@ class NeuMF:
         # MLP part
         self.mlp_user_latent = tf.layers.Flatten()(MLP_Embedding_User)
         self.mlp_item_latent = tf.layers.Flatten()(MLP_Embedding_Item)
-
         mlp_vector = tf.concat([self.mlp_user_latent, self.mlp_item_latent], axis=-1)
+
         # MLP layers
+        Ws = []
+        bs = []
+        for idx in range(1, num_layer):
+            #inp_shape = layers[idx-1]
+            Ws.append(tf.Variable(tf.random_normal([layers[idx-1], layers[idx]],stddev=0.01), name='W_mlp_{}'.format(idx)))
+            bs.append(tf.Variable(tf.constant(0.1, shape=[layers[idx]]), name='b_mlp_{}'.format(idx)))
+
         for idx in range(1,num_layer):
-            W = tf.Variable(tf.random_uniform([int(mlp_vector.shape[1]),int(mlp_vector.shape[1])],-0.25,0.25), name='W_mlp_{}'.format(idx))
-            b = tf.Variable(tf.constant(0.1, shape=[int(mlp_vector.shape[1])]), name='b_mlp')
-            l2_loss += tf.nn.l2_loss(W)
-            l2_loss += tf.nn.l2_loss(b)
-            mlp_vector = tf.nn.relu(tf.nn.xw_plus_b(mlp_vector, W, b, name='layer_{}'.format(idx)), name='mlp_{}'.format(idx))
+            #W = tf.Variable(tf.random_uniform([int(mlp_vector.shape[1]),int(mlp_vector.shape[1])],-0.25,0.25), name='W_mlp_{}'.format(idx))
+            #b = tf.Variable(tf.constant(0.1, shape=[int(mlp_vector.shape[1])]), name='b_mlp_{}'.format(idx))
+            l2_loss += tf.nn.l2_loss(Ws[idx-1])
+            l2_loss += tf.nn.l2_loss(bs[idx-1])
+            mlp_vector = tf.nn.relu(tf.nn.xw_plus_b(mlp_vector, Ws[idx-1], bs[idx-1], name='layer_{}'.format(idx)), name='mlp_{}'.format(idx))
 
         predict_vector = tf.concat([mf_vector, mlp_vector], axis=-1)
 
         with tf.name_scope('prediction'):
-            W = tf.Variable(tf.random_uniform([int(predict_vector.shape[-1]),1],-0.25,0.25), name='W_pred')
-            b = tf.Variable(tf.constant(0.1, shape=[1]), name='b_pred')
-            l2_loss += tf.nn.l2_loss(W)
-            l2_loss += tf.nn.l2_loss(b)
+            W_pred = tf.Variable(tf.random_normal([int(predict_vector.shape[-1]),1],stddev=0.01), name='W_pred')
+            b_pred = tf.Variable(tf.constant(0.1, shape=[1]), name='b_pred')
+            l2_loss += tf.nn.l2_loss(W_pred)
+            l2_loss += tf.nn.l2_loss(b_pred)
             #self.logits = tf.nn.xw_plus_b(predict_vector, W, b, name='logits')
-            self.logits = tf.nn.xw_plus_b(predict_vector, W, b, name='logits')
+            self.logits = tf.nn.xw_plus_b(predict_vector, W_pred, b_pred, name='logits')
             #self.predictions = tf.argmax(self.logits, axis=1, name='predictions')
 
         # Calculate mean cross-entropy loss
@@ -241,19 +249,31 @@ if __name__=='__main__':
                         neuMF.item_input: item_batch,
                         neuMF.labels: label_batch
                     }
-                    _, step, summaries, loss, mse = sess.run(
-                        [train_op, global_step, train_summary_op, neuMF.loss, neuMF.mse], feed_dict)
+                    _, step, summaries, logits, loss, mse = sess.run(
+                        [train_op, global_step, train_summary_op, neuMF.logits, neuMF.loss, neuMF.mse], feed_dict)
                     train_summary_writer.add_summary(summaries, step)
                     #print(predictions)
                     losses.append(loss)
                     mses.append(mse)
 
+                    # Training log display
+                    if step % args.display_every == 0:
+                        #print(user_batch.shape)
+                        #print(item_batch.shape)
+                        #for l,logit in zip(labels, logits):
+                        #    print(l, logit)
+                        time_str = datetime.datetime.now().isoformat()
+                        #avg_loss = sum(losses) / len(losses)
+                        #avg_mse = sum(mses) / len(mses)
+                        print("{}: step {}, loss {:g}, mse {:g}".format(time_str, epoch, loss, mse))
+
                 # Training log display
-                if epoch % args.display_every == 0:
-                    time_str = datetime.datetime.now().isoformat()
-                    avg_loss = sum(losses) / len(losses)
-                    avg_mse = sum(mses) / len(mses)
-                    print("{}: step {}, loss {:g}, mse {:g}".format(time_str, epoch, avg_loss, avg_mse))
+                #if epoch % args.display_every == 0:
+                time_str = datetime.datetime.now().isoformat()
+                avg_loss = sum(losses) / len(losses)
+                avg_mse = sum(mses) / len(mses)
+                print("{}: epoch {}, loss {:g}, mse {:g}".format(time_str, epoch, avg_loss, avg_mse))
+
 
                 if epoch % args.checkpoint_every == 0:
                     path = saver.save(sess, checkpoint_prefix, global_step=step)
