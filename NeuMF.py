@@ -19,7 +19,7 @@ def parse_args():
                         help='Choose a dataset.')
     parser.add_argument('--epochs', type=int, default=100,
                         help='Number of epochs.')
-    parser.add_argument('--batch_size', type=int, default=256,
+    parser.add_argument('--batch_size', type=int, default=5000,
                         help='Batch size.')
     parser.add_argument('--num_factors', type=int, default=8,
                         help='Embedding size of MF model.')
@@ -33,7 +33,7 @@ def parse_args():
                         help='Number of negative instances to pair with a positive instance.')
     parser.add_argument('--l2_reg_lambda', type=float, default=.0,
                         help='L2 regularization lambda (default: 0.0)')
-    parser.add_argument('--lr', type=float, default=0.001,
+    parser.add_argument('--lr', type=float, default=0.0001,
                         help='Learning rate.')
     parser.add_argument('--learner', nargs='?', default='adam',
                         help='Specify an optimizer: adagrad, adam, rmsprop, sgd')
@@ -50,7 +50,7 @@ def parse_args():
     parser.add_argument('--log_device_placement', type=bool, default=False,
                         help='Log placement of ops on devices')
 
-    parser.add_argument("--display_every", type=int, default=100, help="Number of iterations to display training info.")
+    parser.add_argument("--display_every", type=int, default=1, help="Number of iterations to display training info.")
     #parser.add_argument("--evaluate_every", type=int, default=100, help="Evaluate model on dev set after this many steps (default: 100)")
     parser.add_argument("--checkpoint_every", type=int, default=1, help="Save model after this many steps (default: 100)")
     parser.add_argument("--num_checkpoints", type=int, default=5, help="Number of checkpoints to store (default: 5)")
@@ -74,16 +74,16 @@ class NeuMF:
 
         # Embedding layer
         with tf.device('/gpu:0'), tf.name_scope('mlp_user_embedding'):
-            self.W_mlp_user = tf.Variable(tf.random_uniform([num_users, int(layers[0]/2)], -1.0, 1.0), name='W_mlp_user')
+            self.W_mlp_user = tf.Variable(tf.random_uniform([num_users, int(layers[0]/2)], -0.25, 0.25), name='W_mlp_user')
             MLP_Embedding_User = tf.nn.embedding_lookup(self.W_mlp_user, self.user_input)
         with tf.device('/gpu:0'), tf.name_scope('mlp_item_embedding'):
-            self.W_mlp_item = tf.Variable(tf.random_uniform([num_items, int(layers[0]/2)], -1.0, 1.0), name='W_mlp_item')
+            self.W_mlp_item = tf.Variable(tf.random_uniform([num_items, int(layers[0]/2)], -0.25, 0.25), name='W_mlp_item')
             MLP_Embedding_Item = tf.nn.embedding_lookup(self.W_mlp_item, self.item_input)
         with tf.device('/gpu:0'), tf.name_scope('user_embedding'):
-            self.W_mf_user = tf.Variable(tf.random_uniform([num_users, mf_dim],-1.0,1.0), name='W_mf_user')
+            self.W_mf_user = tf.Variable(tf.random_uniform([num_users, mf_dim],-0.25,0.25), name='W_mf_user')
             MF_Embedding_User = tf.nn.embedding_lookup(self.W_mf_user, self.user_input)
         with tf.device('/gpu:0'), tf.name_scope('item_embedding'):
-            self.W_mf_item = tf.Variable(tf.random_uniform([num_items, mf_dim],-1.0,1.0), name='W_mf_item')
+            self.W_mf_item = tf.Variable(tf.random_uniform([num_items, mf_dim],-0.25,0.25), name='W_mf_item')
             MF_Embedding_Item = tf.nn.embedding_lookup(self.W_mf_item, self.item_input)
 
         # MF part
@@ -120,8 +120,9 @@ class NeuMF:
             losses = tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits, labels=self.labels)
             self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
 
-        with tf.name_scope("accuracy"):
-            self.accuracy = tf.reduce_mean(tf.square(self.logits - self.labels))
+        with tf.name_scope("mse"):
+            #self.accuracy = tf.metrics.mean_squared_error(tf.sigmoid(self.logits), self.labels)
+            self.mse = tf.reduce_mean(tf.square(tf.sigmoid(self.logits) - self.labels))
             #correct_predictions = tf.equal(self.predictions, self.labels)
             #self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, tf.float32), name='accuracy')
 
@@ -198,10 +199,10 @@ if __name__=='__main__':
 
             # Summaries for loss and accuracy
             loss_summary = tf.summary.scalar("loss", neuMF.loss)
-            acc_summary = tf.summary.scalar("accuracy", neuMF.accuracy)
+            mse_summary = tf.summary.scalar("mse", neuMF.mse)
 
             # Train Summaries
-            train_summary_op = tf.summary.merge([loss_summary, acc_summary])
+            train_summary_op = tf.summary.merge([loss_summary, mse_summary])
             train_summary_dir = os.path.join(out_dir, "summaries", "train")
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
             
@@ -223,7 +224,9 @@ if __name__=='__main__':
             for epoch in range(num_epochs):
                 batches = batch_iter_per_epoch(
                     list(zip(user_input, item_input, labels)), batch_size)
-                losses = 0.0
+                #losses = 0.0
+                losses = []
+                mses = []
                 for batch in batches:
                     user_batch, item_batch, label_batch = zip(*batch)
                     user_batch = np.array(user_batch)
@@ -238,16 +241,19 @@ if __name__=='__main__':
                         neuMF.item_input: item_batch,
                         neuMF.labels: label_batch
                     }
-                    _, step, summaries, loss, accuracy = sess.run(
-                        [train_op, global_step, train_summary_op, neuMF.loss, neuMF.accuracy], feed_dict)
+                    _, step, summaries, loss, mse = sess.run(
+                        [train_op, global_step, train_summary_op, neuMF.loss, neuMF.mse], feed_dict)
                     train_summary_writer.add_summary(summaries, step)
                     #print(predictions)
-                    losses += loss
+                    losses.append(loss)
+                    mses.append(mse)
 
-                    # Training log display
-                    if epoch % args.display_every == 0:
-                        time_str = datetime.datetime.now().isoformat()
-                        print("{}: step {}, loss {:g}, acc {:g}".format(time_str, epoch, losses, accuracy))
+                # Training log display
+                if epoch % args.display_every == 0:
+                    time_str = datetime.datetime.now().isoformat()
+                    avg_loss = sum(losses) / len(losses)
+                    avg_mse = sum(mses) / len(mses)
+                    print("{}: step {}, loss {:g}, mse {:g}".format(time_str, epoch, avg_loss, avg_mse))
 
                 if epoch % args.checkpoint_every == 0:
                     path = saver.save(sess, checkpoint_prefix, global_step=step)
